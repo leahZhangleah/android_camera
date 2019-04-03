@@ -2,15 +2,17 @@ package com.example.android_camera;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.Camera;
 import android.util.Log;
-import android.util.Size;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.SortedSet;
 
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
     private static final String TAG = "LiveCameraView";
@@ -20,6 +22,8 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     private int currentCameraId;
     private List<Camera.Size> supportedPreviewSizes;
     private Camera.Size mPreviewSize;
+    private Camera.Parameters parameters;
+    private AspectRatio DEFAULT_ASPECT_RATIO = AspectRatio.of(4,3);
 
     public CameraPreview(Context context, Activity activity, Camera camera,int cameraId) {
         super(context);
@@ -44,11 +48,10 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             requestLayout();
 
             //todo setup camera parameters
-            Camera.Parameters parameters = mCamera.getParameters();
+            parameters = mCamera.getParameters();
             List<String> focusModes = parameters.getSupportedFocusModes();
             if(focusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO)){
                 parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-
             }
 
             List<String> flashModes = parameters.getSupportedFlashModes();
@@ -59,7 +62,6 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             mCamera.setParameters(parameters);
         }
     }
-
 
     //horizontal space requirements as imposed by the parent
     //vertical space requirements as imposed by the parent
@@ -181,6 +183,54 @@ This method is always called at least once, after surfaceCreated(SurfaceHolder).
             Log.d(TAG, "Error setting camera preview: " + e.getMessage());
         }
     }
+
+    /*****get preview size***/
+    private final SizeMap mPreviewSizes = new SizeMap();
+    Camera.Parameters mCameraParameters;
+    private void getPreviewSize(Camera mCamera){
+        mCameraParameters = mCamera.getParameters();
+        //supported preview sizes
+        mPreviewSizes.clear();
+        for(Camera.Size size: mCameraParameters.getSupportedPreviewSizes()){
+            mPreviewSizes.add(new Size(size.width,size.height));
+        }
+    }
+
+    /*****get picture size***/
+    private final SizeMap mPictureSize = new SizeMap();
+    private void getPictureSize(Camera mCamera){
+        mCameraParameters = mCamera.getParameters();
+        mPictureSize.clear();
+        for(Camera.Size size:mCameraParameters.getSupportedPictureSizes()){
+            mPictureSize.add(new Size(size.width,size.height));
+        }
+    }
+
+    private Size chooseOptimalSize(SortedSet<Size> sizes){
+        int desiredWidth,desiredHeight;
+        //preview surface's size
+        final int surfaceWidth = getWidth();
+        final int surfaceHeight = getHeight();
+        //switch width and height depending on screen orientation
+        if(isLandscape()){
+            desiredWidth = surfaceWidth;
+            desiredHeight = surfaceHeight;
+        }else{
+            desiredWidth = surfaceHeight;
+            desiredHeight = surfaceWidth;
+        }
+
+        
+
+    }
+
+    private boolean isLandscape(){
+        int orientation = activity.getResources().getConfiguration().orientation;
+        if(orientation== Configuration.ORIENTATION_LANDSCAPE ) return true;
+        return false;
+    }
+
+
 
 
     private void setCameraDisplayOrientation(Activity activity, int cameraId, Camera camera){

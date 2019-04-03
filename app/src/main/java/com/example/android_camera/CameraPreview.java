@@ -17,26 +17,122 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     private Camera mCamera;
     private SurfaceHolder mSurfaceHolder;
     private Activity activity;
+    private int currentCameraId;
+    private List<Camera.Size> supportedPreviewSizes;
+    private Camera.Size mPreviewSize;
 
-
-    public CameraPreview(Context context, Camera camera) {
+    public CameraPreview(Context context, Activity activity, Camera camera,int cameraId) {
         super(context);
         mCamera = camera;
+        this.activity = activity;
         mSurfaceHolder = getHolder();
         mSurfaceHolder.addCallback(this);
+        currentCameraId = cameraId;
     }
 
     private void log(String methodName){
         Log.i(TAG,methodName + "is called");
     }
 
+    private void setUpCamera(){
+        if(mCamera!=null){
+            supportedPreviewSizes = mCamera.getParameters().getSupportedPreviewSizes();
+            //If there's something related to size change - requestLayout() should be called,
+            // if there's only a visual change without a size changed - you should call invalidate(),  It will result in onDraw being called eventually
+            //If you don't tell your View that its size has changed (with a requestLayout method call),
+            // then the View will assume it didn't, and the onMeasure and onLayout won't be called.
+            requestLayout();
+
+            //todo setup camera parameters
+            Camera.Parameters parameters = mCamera.getParameters();
+            List<String> focusModes = parameters.getSupportedFocusModes();
+            if(focusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO)){
+                parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+
+            }
+
+            List<String> flashModes = parameters.getSupportedFlashModes();
+            if(flashModes.contains(Camera.Parameters.FLASH_MODE_AUTO)){
+                parameters.setFlashMode(Camera.Parameters.FLASH_MODE_AUTO);
+            }
+
+            mCamera.setParameters(parameters);
+        }
+    }
+
+
+    //horizontal space requirements as imposed by the parent
+    //vertical space requirements as imposed by the parent
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        //get optimal screen size
+        final int width = resolveSize(getSuggestedMinimumWidth(),widthMeasureSpec);
+        final int height = resolveSize(getSuggestedMinimumHeight(),heightMeasureSpec);
+        setMeasuredDimension(width,height);
+
+        if(supportedPreviewSizes!=null){
+            mPreviewSize = getOptimalPreviewSize(supportedPreviewSizes,width,height);
+        }
+    }
+
+    private Camera.Size getOptimalPreviewSize(List<Camera.Size> sizes, int width, int height) {
+        final double ASPECT_TOLERANCE = 0.1;
+        double targetRatio = (double) width/height;
+        if(sizes==null) return null;
+
+        Camera.Size optimalSize = null;
+        double minDiff = Double.MAX_VALUE;
+
+        int targetHeight = height;
+        // Try to find an size match aspect ratio and size
+        for(Camera.Size size: sizes){
+            double ratio = size.width / size.height;
+            if(Math.abs(ratio - targetRatio) > ASPECT_TOLERANCE) continue; //continue means skip to next iteration directly
+            if(Math.abs(size.height - targetHeight) < minDiff){
+                optimalSize = size;
+                minDiff = Math.abs(size.height - targetHeight);
+            }
+        }
+
+        if(optimalSize==null){
+            minDiff = Double.MAX_VALUE;
+            for(Camera.Size size: sizes){
+                if(Math.abs(size.height - targetHeight) < minDiff){
+                    optimalSize = size;
+                    minDiff = Math.abs(size.height - targetHeight);
+                }
+            }
+        }
+
+        return optimalSize;
+    }
+
+    /*Called from layout when this view should assign a size and position to each of its children.
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        if(changed){
+            final int width = right - left;
+            final int height = bottom - top;
+
+            int previewWidth = width;
+            int previewHeight = height;
+            if(mPreviewSize!=null){
+                previewWidth = mPreviewSize.width;
+                previewHeight = mPreviewSize.height;
+            }
+        }
+    }*/
+
     @Override
     public void surfaceCreated(SurfaceHolder surfaceHolder) {
         log("surfaceCreated");
 
         try{
-            mCamera.setPreviewDisplay(surfaceHolder);
-            mCamera.startPreview();
+            if(mCamera!=null){
+                mCamera.setPreviewDisplay(surfaceHolder);
+                setCameraDisplayOrientation(activity,currentCameraId,mCamera);
+                mCamera.startPreview();
+            }
         }catch (IOException e){
             Log.d(TAG, "Error setting camera preview: " + e.getMessage());
         }
@@ -56,7 +152,9 @@ This method is always called at least once, after surfaceCreated(SurfaceHolder).
         if(mSurfaceHolder.getSurface() == null) return;
         // stop preview before making changes
         try{
-            mCamera.stopPreview();
+            if(mCamera!=null){
+                mCamera.stopPreview();
+            }
         }catch (Exception e){
             // ignore: tried to stop a non-existent preview
         }
@@ -74,14 +172,16 @@ This method is always called at least once, after surfaceCreated(SurfaceHolder).
         printSupportedFormats(previewFormats,"previewFormats");
         List<Integer> pictureFormats = mCamera.getParameters().getSupportedPictureFormats();
         printSupportedFormats(pictureFormats,"pictureFormats");
+
         try{
             mCamera.setPreviewDisplay(mSurfaceHolder);
-            setCameraDisplayOrientation(activity,);
+            setCameraDisplayOrientation(activity,currentCameraId,mCamera);
             mCamera.startPreview();
         }catch (IOException e){
             Log.d(TAG, "Error setting camera preview: " + e.getMessage());
         }
     }
+
 
     private void setCameraDisplayOrientation(Activity activity, int cameraId, Camera camera){
         Camera.CameraInfo info = new Camera.CameraInfo();
@@ -112,7 +212,9 @@ This method is always called at least once, after surfaceCreated(SurfaceHolder).
         //mCamera.stopPreview();
         //mCamera.release();
         //todo:empty. Take care of releasing the Camera preview in your activity.
-
+        if(mCamera!=null){
+            mCamera.stopPreview();
+        }
     }
 
     private <T> void printSupportedSize(List<T> sizes,String type){

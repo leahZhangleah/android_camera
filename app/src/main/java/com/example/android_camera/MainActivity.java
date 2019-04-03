@@ -8,6 +8,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 
@@ -25,6 +26,7 @@ public class MainActivity extends AppCompatActivity {
     private VideoRecord videoRecord;
     private boolean isRecording;
     FrameLayout frameLayout;
+    int cameraId = Camera.CameraInfo.CAMERA_FACING_FRONT;
 
     public static final int MEDIA_TYPE_IMAGE = 1;
     public static final int MEDIA_TYPE_VIDEO = 2;
@@ -34,7 +36,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         frameLayout = findViewById(R.id.camera_preview);
 
         Button captureBtn = findViewById(R.id.button_capture);
@@ -74,9 +76,29 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         log("onResume");
         if(camera==null){
+            //访问相机资源
             camera = getCameraInstance();
-            mPreview = new CameraPreview(this,camera);
+            //创建预览界面
+            mPreview = new CameraPreview(this,this,camera,switchCamera());
+            //将预览界面添加到布局页面中
             frameLayout.addView(mPreview);
+
+
+            File videoOutputFile = getOutputMediaFile(MEDIA_TYPE_VIDEO);
+            videoRecord = new VideoRecord(camera,videoOutputFile,mPreview);
+        }
+
+    }
+
+    private void cameraInstantiation(){
+        if(camera==null){
+            //访问相机资源
+            camera = getCameraInstance();
+            //创建预览界面
+            mPreview = new CameraPreview(this,this,camera,switchCamera());
+            //将预览界面添加到布局页面中
+            frameLayout.addView(mPreview);
+
             File videoOutputFile = getOutputMediaFile(MEDIA_TYPE_VIDEO);
             videoRecord = new VideoRecord(camera,videoOutputFile,mPreview);
         }
@@ -84,6 +106,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    //拍照监听
     private Camera.PictureCallback pictureCallback = new Camera.PictureCallback() {
         @Override
         public void onPictureTaken(byte[] data, Camera camera) {
@@ -94,10 +117,10 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "Error creating media file, check storage permissions");
                 return;
             }
+            //将拍摄的照片保存到文件中,并在下一个ACTIVITY中显示
             try{
                 FileOutputStream fos = new FileOutputStream(picFile);
                 fos.write(data);
-
                 fos.close();
                 consumeImgByte(picFile.getAbsolutePath());
             }catch (FileNotFoundException e){
@@ -109,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    //不能直接将byte[]传给下一个activity,因为size太大
     private void consumeImgByte(String filePath) {
         Intent intent = new Intent(this,MediaActivity.class);
         intent.putExtra("imageByte",filePath);
@@ -138,21 +162,27 @@ public class MainActivity extends AppCompatActivity {
             return null;
         }
         return mediaFile;
-        /*/ To be safe,check that the SDCard is mounted
-        if(Environment.getExternalStorageState()==Environment.MEDIA_MOUNTED){
-
-        }
-        return null;*/
     }
 
+    //调换镜头
+    private int switchCamera(){
+        if(Camera.getNumberOfCameras()>1){
+            Camera.CameraInfo info = new Camera.CameraInfo();
+            Camera.getCameraInfo(cameraId,info);
+            if(info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT){
+                cameraId = Camera.CameraInfo.CAMERA_FACING_BACK;
+            }else if(info.facing == Camera.CameraInfo.CAMERA_FACING_BACK){
+                cameraId = Camera.CameraInfo.CAMERA_FACING_FRONT;
+            }
 
-    public int getAvailableCameras(){
-        return Camera.getNumberOfCameras();
+        };
+       return cameraId;
     }
 
 
     //If your application does not specifically require a camera using a manifest declaration,
     // you should check to see if a camera is available at runtime.
+    //todo since we have specified in manifest, we don't need to check here
     private boolean checkCameraHardware(){
         if(getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA)) return true;
         return false;
@@ -163,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
         log("getCameraInstance");
         Camera camera = null;
         try{
-            camera = Camera.open();
+            camera = Camera.open(cameraId);
             //get it cameraId as parameter to specify which camera to open 0=rear. 1=front, maybe more
         }catch (Exception e){
             // Camera is not available (in use or does not exist)
@@ -174,13 +204,15 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         log("onpause");
+        releaseCamera();
         super.onPause();
+    }
+
+    private void releaseCamera(){
         if(camera!=null){
-            camera.stopPreview();
             camera.release();
             camera=null;
         }
-
     }
 
     @Override

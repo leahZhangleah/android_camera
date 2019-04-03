@@ -2,15 +2,20 @@ package com.example.android_camera;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.hardware.Camera;
 import android.util.Log;
-import android.util.Size;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
+import com.example.android_camera.base.AspectRatio;
+import com.example.android_camera.base.Size;
+import com.example.android_camera.base.SizeMap;
+
 import java.io.IOException;
 import java.util.List;
+import java.util.SortedSet;
 
 public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback {
     private static final String TAG = "LiveCameraView";
@@ -20,6 +25,8 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     private int currentCameraId;
     private List<Camera.Size> supportedPreviewSizes;
     private Camera.Size mPreviewSize;
+    private Camera.Parameters parameters;
+    private AspectRatio DEFAULT_ASPECT_RATIO = AspectRatio.of(4,3);
 
     public CameraPreview(Context context, Activity activity, Camera camera,int cameraId) {
         super(context);
@@ -44,11 +51,10 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             requestLayout();
 
             //todo setup camera parameters
-            Camera.Parameters parameters = mCamera.getParameters();
+            parameters = mCamera.getParameters();
             List<String> focusModes = parameters.getSupportedFocusModes();
             if(focusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO)){
                 parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-
             }
 
             List<String> flashModes = parameters.getSupportedFlashModes();
@@ -59,7 +65,6 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             mCamera.setParameters(parameters);
         }
     }
-
 
     //horizontal space requirements as imposed by the parent
     //vertical space requirements as imposed by the parent
@@ -182,7 +187,81 @@ This method is always called at least once, after surfaceCreated(SurfaceHolder).
         }
     }
 
+    /*****get preview size***/
+    private final SizeMap mPreviewSizes = new SizeMap();
+    Camera.Parameters mCameraParameters;
+    AspectRatio mAspectRatio;
+    private void getPreviewSize(Camera mCamera){
+        mCameraParameters = mCamera.getParameters();
+        //supported preview sizes
+        mPreviewSizes.clear();
+        for(Camera.Size size: mCameraParameters.getSupportedPreviewSizes()){
+            mPreviewSizes.add(new Size(size.width,size.height));
+        }
 
+        /*****get preview size according to the defined aspect ratio***/
+        SortedSet<Size> sizes = mPreviewSizes.getSizes(mAspectRatio);
+        if(sizes==null){//not supported ratio
+            mAspectRatio = chooseAspectRatio(); //choose another aspect ratio
+            sizes = mPreviewSizes.getSizes(mAspectRatio);
+        }
+
+        Size size = chooseOptimalSize(sizes);
+        mCameraParameters.setPreviewSize(size.getWidth(),size.getHeight());
+    }
+
+    /*****get picture size***/
+    private final SizeMap mPictureSizes = new SizeMap();
+    private void getPictureSize(Camera mCamera){
+        mCameraParameters = mCamera.getParameters();
+        mPictureSizes.clear();
+        for(Camera.Size size:mCameraParameters.getSupportedPictureSizes()){
+            mPictureSizes.add(new Size(size.width,size.height));
+        }
+
+        //when aspect ratio is defined, try to get the largest size for pic
+        final Size pictureSize = mPictureSizes.getSizes(mAspectRatio).last();
+
+        //todo picturesize could be null, like above, the aspectratio is not supported
+    }
+
+
+    /***choose the best size according to the screen size***/
+    private Size chooseOptimalSize(SortedSet<Size> sizes){
+        int desiredWidth,desiredHeight;
+        //preview surface's size
+        final int surfaceWidth = getWidth();
+        final int surfaceHeight = getHeight();
+        //switch width and height depending on screen orientation
+        if(isLandscape()){
+            desiredWidth = surfaceWidth;
+            desiredHeight = surfaceHeight;
+        }else{
+            desiredWidth = surfaceHeight;
+            desiredHeight = surfaceWidth;
+        }
+
+
+        //todo: big enough and small, choose the smallest of big enough or biggest of small
+        Size result = null;
+        for(Size size:sizes){// Iterate from small to large
+            if(desiredWidth <=size.getWidth() && desiredHeight<=size.getHeight()){
+                return size;
+            }
+            result = size;
+        }
+        return result;
+    }
+
+    private boolean isLandscape(){
+        int orientation = activity.getResources().getConfiguration().orientation;
+        if(orientation== Configuration.ORIENTATION_LANDSCAPE ) return true;
+        return false;
+    }
+
+
+
+    /****set orientation of preview***/
     private void setCameraDisplayOrientation(Activity activity, int cameraId, Camera camera){
         Camera.CameraInfo info = new Camera.CameraInfo();
         Camera.getCameraInfo(cameraId,info);
@@ -204,6 +283,25 @@ This method is always called at least once, after surfaceCreated(SurfaceHolder).
         }
         camera.setDisplayOrientation(result);
     }
+
+    /****set orientation of picture by Camera.parameters.setRotation***/
+    public void onOrientationChanged(int orientation){
+        if(orientation == Configuration.ORIENTATION_UNDEFINED)return;
+        Camera.CameraInfo info = new Camera.CameraInfo();
+        Camera.getCameraInfo(currentCameraId,info);
+
+        orientation = (orientation + 45) / 90 * 90;
+        int rotation = 0;
+        if(info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT){
+            rotation = (info.orientation - orientation + 360) % 360;
+        }else{
+            rotation = (info.orientation + orientation) % 360;
+        }
+
+        mCameraParameters.setRotation(rotation);
+    }
+
+
 
 
     @Override

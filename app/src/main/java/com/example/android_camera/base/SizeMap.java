@@ -41,7 +41,7 @@ public class SizeMap {
         return mRatios.get(ratio);
     }
 
-    void clear(){
+    public void clear(){
         mRatios.clear();
     }
 

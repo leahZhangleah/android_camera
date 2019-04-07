@@ -45,7 +45,7 @@ public class SizeMap {
         mRatios.clear();
     }
 
-    boolean isEmpty(){
+    public boolean isEmpty(){
         return mRatios.isEmpty();
     }
 }

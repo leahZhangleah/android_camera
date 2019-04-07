@@ -72,8 +72,6 @@ public abstract class PictureCaptureCallback extends CameraCaptureSession.Captur
                     onReady();
                 }
                 break;
-
-
         }
     }
 
